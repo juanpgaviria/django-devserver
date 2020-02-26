@@ -1,0 +1,199 @@
+From 27ac3750883b55c027701ce8ae3faa5868ebd7d2 Mon Sep 17 00:00:00 2001
+From: Alexander Ryabtsev <ryabtsev.alex@gmail.com>
+Date: Sun, 30 Aug 2015 18:34:05 +0300
+Subject: [PATCH 1/3] Python 3.4 fixes
+
+---
+ devserver/management/commands/runserver.py | 11 +++++++----
+ devserver/models.py                        | 10 ++++++----
+ devserver/modules/cache.py                 |  2 +-
+ devserver/testcases.py                     |  7 +++++--
+ 4 files changed, 19 insertions(+), 11 deletions(-)
+
+diff --git a/devserver/management/commands/runserver.py b/devserver/management/commands/runserver.py
+index e4b5055..a9ecf16 100644
+--- a/devserver/management/commands/runserver.py
++++ b/devserver/management/commands/runserver.py
+@@ -9,7 +9,10 @@
+ import imp
+ import errno
+ import socket
+-import SocketServer
++try:
++    import SocketServer
++except ImportError:
++    import socketserver as SocketServer
+ from optparse import make_option
+ 
+ from devserver.handlers import DevServerHandler
+@@ -26,7 +29,7 @@
+ 
+ 
+ def null_technical_500_response(request, exc_type, exc_value, tb):
+-    raise exc_type, exc_value, tb
++    raise exc_type(exc_value, tb)
+ 
+ 
+ def run(addr, port, wsgi_handler, mixin=None, ipv6=False):
+@@ -141,7 +144,7 @@ def inner_run(self, *args, **options):
+         if use_werkzeug:
+             try:
+                 from werkzeug import run_simple, DebuggedApplication
+-            except ImportError, e:
++            except ImportError as e:
+                 self.stderr.write("WARNING: Unable to initialize werkzeug: %s\n" % e)
+                 use_werkzeug = False
+             else:
+@@ -205,7 +208,7 @@ def inner_run(self, *args, **options):
+             else:
+                 run(self.addr, int(self.port), app, mixin, ipv6=self.use_ipv6)
+ 
+-        except wsgi_server_exc_cls, e:
++        except wsgi_server_exc_cls as e:
+             # Use helpful error messages instead of ugly tracebacks.
+             ERRORS = {
+                 errno.EACCES: "You don't have permission to access that port.",
+diff --git a/devserver/models.py b/devserver/models.py
+index 0590973..404e71f 100644
+--- a/devserver/models.py
++++ b/devserver/models.py
+@@ -17,17 +17,19 @@ def load_modules():
+         try:
+             name, class_name = path.rsplit('.', 1)
+         except ValueError:
+-            raise exceptions.ImproperlyConfigured, '%s isn\'t a devserver module' % path
++            raise exceptions.ImproperlyConfigured('%s isn\'t a devserver module' % path)
+ 
+         try:
+             module = __import__(name, {}, {}, [''])
+-        except ImportError, e:
+-            raise exceptions.ImproperlyConfigured, 'Error importing devserver module %s: "%s"' % (name, e)
++        except ImportError as e:
++            raise exceptions.ImproperlyConfigured('Error importing devserver module %s: "%s"' % (name, e))
+ 
+         try:
+             cls = getattr(module, class_name)
+         except AttributeError:
+-            raise exceptions.ImproperlyConfigured, 'Error importing devserver module "%s" does not define a "%s" class' % (name, class_name)
++            raise exceptions.ImproperlyConfigured(
++                'Error importing devserver module "%s" does not define a "%s" class' % (name, class_name)
++            )
+ 
+         try:
+             instance = cls(GenericLogger(cls))
+diff --git a/devserver/modules/cache.py b/devserver/modules/cache.py
+index 53a14f8..e8e9b13 100644
+--- a/devserver/modules/cache.py
++++ b/devserver/modules/cache.py
+@@ -43,7 +43,7 @@ def process_complete(self, request):
+             ), duration=stats.get_total_time('cache'))
+ 
+         # set our attributes back to their defaults
+-        for k, v in self.old.iteritems():
++        for k, v in self.old.items():
+             setattr(cache, k, v)
+ 
+ 
+diff --git a/devserver/testcases.py b/devserver/testcases.py
+index 06d8f5e..151c843 100644
+--- a/devserver/testcases.py
++++ b/devserver/testcases.py
+@@ -1,5 +1,8 @@
+ import socket
+-import SocketServer
++try:
++    import SocketServer
++except ImportError:
++    import socketserver as SocketServer
+ import threading
+ 
+ from django.conf import settings
+@@ -75,7 +78,7 @@ def __init__(self, *args, **kwargs):
+             httpd = new(server_address, SlimWSGIRequestHandler)
+             httpd.set_app(handler)
+             self.started.set()
+-        except wsgi_server_exc_cls, e:
++        except wsgi_server_exc_cls as e:
+             self.error = e
+             self.started.set()
+             return
+
+From ee2fbc32a016b789880f346a2e0de09679a2e4d3 Mon Sep 17 00:00:00 2001
+From: Alexander Ryabtsev <ryabtsev.alex@gmail.com>
+Date: Fri, 3 Jun 2016 17:40:57 +0300
+Subject: [PATCH 2/3] Django 1.9 fix
+
+---
+ devserver/modules/sql.py | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/devserver/modules/sql.py b/devserver/modules/sql.py
+index 68e5f1e..9a6eccc 100644
+--- a/devserver/modules/sql.py
++++ b/devserver/modules/sql.py
+@@ -12,7 +12,7 @@
+     from django.db import connection
+     connections = {'default': connection}
+ 
+-from django.db.backends import util
++from django.db.backends import utils
+ from django.conf import settings as django_settings
+ #from django.template import Node
+ 
+@@ -52,9 +52,9 @@ def truncate_sql(sql, aggregates=True):
+     import django
+     version = float('.'.join([str(x) for x in django.VERSION[:2]]))
+     if version >= 1.6:
+-        DatabaseStatTracker = util.CursorWrapper
++        DatabaseStatTracker = utils.CursorWrapper
+     else:
+-        DatabaseStatTracker = util.CursorDebugWrapper
++        DatabaseStatTracker = utils.CursorDebugWrapper
+ 
+ 
+ class DatabaseStatTracker(DatabaseStatTracker):
+@@ -126,14 +126,14 @@ class SQLRealTimeModule(DevServerModule):
+     logger_name = 'sql'
+ 
+     def process_init(self, request):
+-        if not issubclass(util.CursorDebugWrapper, DatabaseStatTracker):
+-            self.old_cursor = util.CursorDebugWrapper
+-            util.CursorDebugWrapper = DatabaseStatTracker
++        if not issubclass(utils.CursorDebugWrapper, DatabaseStatTracker):
++            self.old_cursor = utils.CursorDebugWrapper
++            utils.CursorDebugWrapper = DatabaseStatTracker
+         DatabaseStatTracker.logger = self.logger
+ 
+     def process_complete(self, request):
+-        if issubclass(util.CursorDebugWrapper, DatabaseStatTracker):
+-            util.CursorDebugWrapper = self.old_cursor
++        if issubclass(utils.CursorDebugWrapper, DatabaseStatTracker):
++            utils.CursorDebugWrapper = self.old_cursor
+ 
+ 
+ class SQLSummaryModule(DevServerModule):
+
+From 3060f842de9620954455e1d2fb16a3d7f6771067 Mon Sep 17 00:00:00 2001
+From: Alexander Ryabtsev <ryabtsev.alex@gmail.com>
+Date: Thu, 6 Oct 2016 15:27:31 +0300
+Subject: [PATCH 3/3] Fix middleware for Django 1.10
+
+---
+ devserver/middleware.py | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/devserver/middleware.py b/devserver/middleware.py
+index 20ffa8f..fde2ad2 100644
+--- a/devserver/middleware.py
++++ b/devserver/middleware.py
+@@ -1,7 +1,9 @@
++from django.utils.deprecation import MiddlewareMixin
++
+ from devserver.models import MODULES
+ 
+ 
+-class DevServerMiddleware(object):
++class DevServerMiddleware(MiddlewareMixin):
+     def should_process(self, request):
+         from django.conf import settings
+ 

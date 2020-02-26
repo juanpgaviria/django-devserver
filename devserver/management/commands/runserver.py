@@ -47,24 +47,24 @@ def run(addr, port, wsgi_handler, mixin=None, ipv6=False):
 
 
 class Command(BaseCommand):
-    option_list = BaseCommand.option_list + (
-        make_option(
-            '--werkzeug', action='store_true', dest='use_werkzeug', default=False,
-            help='Tells Django to use the Werkzeug interactive debugger.'),
-        make_option(
-            '--forked', action='store_true', dest='use_forked', default=False,
-            help='Use forking instead of threading for multiple web requests.'),
-        make_option(
-            '--dozer', action='store_true', dest='use_dozer', default=False,
-            help='Enable the Dozer memory debugging middleware.'),
-        make_option(
-            '--wsgi-app', dest='wsgi_app', default=None,
-            help='Load the specified WSGI app as the server endpoint.'),
-    )
-    if any(map(lambda app: app in settings.INSTALLED_APPS, STATICFILES_APPS)):
-        option_list += make_option(
-            '--nostatic', dest='use_static_files', action='store_false', default=True,
-            help='Tells Django to NOT automatically serve static files at STATIC_URL.'),
+    # option_list = BaseCommand.option_list + (
+    #     make_option(
+    #         '--werkzeug', action='store_true', dest='use_werkzeug', default=False,
+    #         help='Tells Django to use the Werkzeug interactive debugger.'),
+    #     make_option(
+    #         '--forked', action='store_true', dest='use_forked', default=False,
+    #         help='Use forking instead of threading for multiple web requests.'),
+    #     make_option(
+    #         '--dozer', action='store_true', dest='use_dozer', default=False,
+    #         help='Enable the Dozer memory debugging middleware.'),
+    #     make_option(
+    #         '--wsgi-app', dest='wsgi_app', default=None,
+    #         help='Load the specified WSGI app as the server endpoint.'),
+    # )
+    # if any(map(lambda app: app in settings.INSTALLED_APPS, STATICFILES_APPS)):
+    #     option_list += make_option(
+    #         '--nostatic', dest='use_static_files', action='store_false', default=True,
+    #         help='Tells Django to NOT automatically serve static files at STATIC_URL.'),
 
     help = "Starts a lightweight Web server for development which outputs additional debug information."
     args = '[optional port number, or ipaddr:port]'
@@ -88,10 +88,13 @@ class Command(BaseCommand):
         else:
             options = None
 
-        options, args = parser.parse_args(argv[2:], options)
+        options = parser.parse_args(argv[2:], options)
+        cmd_options = vars(options)
+        args = cmd_options.pop('args', ())
 
         handle_default_options(options)
-        self.execute(*args, **options.__dict__)
+        self.execute(*args, **cmd_options)
+
 
     def handle(self, addrport='', *args, **options):
         if args:
@@ -120,7 +123,7 @@ class Command(BaseCommand):
             handler = AdminMediaHandler(
                 handler, options['admin_media_path'])
 
-        if 'django.contrib.staticfiles' in settings.INSTALLED_APPS and options['use_static_files']:
+        if 'django.contrib.staticfiles' in settings.INSTALLED_APPS:
             from django.contrib.staticfiles.handlers import StaticFilesHandler
             handler = StaticFilesHandler(handler)
 
@@ -152,7 +155,7 @@ class Command(BaseCommand):
                 debug.technical_500_response = null_technical_500_response
 
         self.stdout.write("Validating models...\n\n")
-        self.validate(display_num_errors=True)
+        # self.validate(display_num_errors=True)
         self.stdout.write((
             "Django version %(version)s, using settings %(settings)r\n"
             "Running django-devserver %(devserver_version)s\n"
@@ -160,7 +163,8 @@ class Command(BaseCommand):
             "Quit the server with %(quit_command)s.\n"
         ) % {
             "server_type": use_werkzeug and 'werkzeug' or 'Django',
-            "server_model": options['use_forked'] and 'Forked' or 'Threaded',
+            #"server_model": options['use_forked'] and 'Forked' or 'Threaded',
+            "server_model": 'Forked',
             "version": self.get_version(),
             "devserver_version": devserver.get_version(),
             "settings": settings.SETTINGS_MODULE,
@@ -186,7 +190,7 @@ class Command(BaseCommand):
                 except (ImportError, AttributeError):
                     raise
 
-        if options['use_forked']:
+        if True:
             mixin = SocketServer.ForkingMixIn
         else:
             mixin = SocketServer.ThreadingMixIn
@@ -196,7 +200,7 @@ class Command(BaseCommand):
             module, class_name = middleware.rsplit('.', 1)
             app = getattr(__import__(module, {}, {}, [class_name]), class_name)(app)
 
-        if options['use_dozer']:
+        if False:
             from dozer import Dozer
             app = Dozer(app)
 
